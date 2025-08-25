@@ -1,0 +1,27 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>7.3</LangVersion>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Authors>Muhammad Guruh Ajinugroho</Authors>
+    <Description>Automatic EF Core migrations on startup for ASP.NET Core and Generic Host apps.</Description>
+    <PackageId>EfAutoMigration</PackageId>
+    <Version>1.0.0</Version>
+    <RepositoryUrl>https://github.com/MGAjinugrh/EfAutoMigration</RepositoryUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Required for IStartupFilter -->
+    <PackageReference Include="Microsoft.AspNetCore.Hosting.Abstractions" Version="2.2.0" />
+
+    <!-- EF Core 3.1 (last version supporting netstandard2.0) -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="3.1.32" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="3.1.32" />
+
+    <!-- Required for DI + IServiceCollection extensions -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="3.1.32" />
+  </ItemGroup>
+
+</Project>
