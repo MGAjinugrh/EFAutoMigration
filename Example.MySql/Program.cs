@@ -1,27 +1,46 @@
-﻿using BCrypt.Net;
-using Common.Entities;
-using Example.MySql.Data.Factories;
+﻿using Common.Entities;
+using Example.MySql.Data;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using EfAutoMigration;
+using Microsoft.EntityFrameworkCore;
 
-Console.WriteLine("Running Example.MySql on .NET 8...");
+Console.WriteLine("Running Example.MySql on .NET 8 with EfAutoMigration...");
 
-using var context = new MyDbContextFactory().CreateDbContext(args);
+var host = Host.CreateDefaultBuilder(args)
+    .ConfigureServices(services =>
+    {
+        var optionBuilder = new DbContextOptionsBuilder<MyDbContext>();
+        var connString = "Server=localhost;Database=testdb;User=root;Password=sql123";
+        // Register DbContext
+        services.AddDbContext<MyDbContext>(options =>
+            options.UseMySql(connString, ServerVersion.AutoDetect(connString)));
 
-// Trigger migration auto-applied
-await context.Database.EnsureCreatedAsync();
+        // Enable auto-migration (with marker table 'user')
+        services.AddEfAutoMigration<MyDbContext>("user");
+    })
+    .Build();
 
-Console.WriteLine("Database ready.");
+// Run migrations automatically at startup
+await host.StartAsync();
+Console.WriteLine("Database migrated");
 
 // Example of initial user seeding
 const string TEST_USER = "testuser";
-if (!context.Users.Any(row => row.Username == TEST_USER))
+using(var scope = host.Services.CreateScope())
 {
-    context.Users.Add(new User
-    {
-        Username = TEST_USER,
-        PasswordHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString()),
-        CreatedAt = DateTime.UtcNow,
-    });
-    await context.SaveChangesAsync();
+    var db = scope.ServiceProvider.GetRequiredService<MyDbContext>();
 
-    Console.WriteLine("User inserted successfully!");
+    if (!db.Users.Any(u => u.Username == TEST_USER))
+    {
+        db.Users.Add(new User
+        {
+            Username = TEST_USER,
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString()),
+            CreatedAt = DateTime.UtcNow,
+            CreatorId = 0
+        });
+        await db.SaveChangesAsync();
+        Console.WriteLine("User seeded into database");
+    }
 }

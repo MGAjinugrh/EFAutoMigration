@@ -1,102 +1,104 @@
-﻿using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using System;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace EfAutoMigration
 {
     public static class AutoMigrationExtensions
     {
         /// <summary>
-        /// Registers an <see cref="IStartupFilter"/> that will run
-        /// <c>Database.Migrate()</c> during application startup.
-        /// Works with PostgreSQL, MySQL, and other EFCore-supported providers.
+        /// Registers automatic EF migrations at application startup.
+        /// Runs via <see cref="IHostedService"/> so it works with any application
+        /// using the .NET Generic Host model:
+        /// ASP.NET Core, console apps, worker services, etc.
         /// </summary>
-        /// <typeparam name="TContext">Your <see cref="DbContext"/> type.</typeparam>
-        /// <param name="services">The application's DI container.</param>
-        /// <param name="markerTables">
-        /// One or more table names that must exist to consider the schema "present".
-        /// If none exist, migrations run; otherwise only pending migrations run.
-        /// </param>
+        /// <typeparam name="TContext">Your DbContext type</typeparam>
+        /// <param name="services">DI container</param>
+        /// <param name="markerTables">Optional: marker tables to check if schema exists</param>
         public static IServiceCollection AddEfAutoMigration<TContext>(
             this IServiceCollection services,
             params string[] markerTables)
             where TContext : DbContext
         {
-            services.AddSingleton<IStartupFilter>(
-                new AutoMigrationStartupFilter<TContext>(markerTables));
+            services.AddSingleton<IHostedService>(
+                sp => new AutoMigrationHostedService<TContext>(sp, markerTables));
+
             return services;
         }
 
-        /* ---------- nested private class ---------- */
 
-        private sealed class AutoMigrationStartupFilter<TContext> : IStartupFilter
+        /* ---------- nested private classes ---------- */
+
+        private sealed class AutoMigrationHostedService<TContext> : IHostedService
             where TContext : DbContext
         {
+            private readonly IServiceProvider _services;
             private readonly string[] _markers;
-            public AutoMigrationStartupFilter(string[] markers)
+
+            public AutoMigrationHostedService(IServiceProvider services, string[] markers)
             {
-                _markers = markers ?? new string[0];
+                _services = services;
+                _markers = markers ?? Array.Empty<string>();
             }
 
-            public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next)
+            public Task StartAsync(CancellationToken cancellationToken)
             {
-                return app =>
+                using (var scope = _services.CreateScope())
                 {
-                    using (var scope = app.ApplicationServices.CreateScope())
-                    {
-                        var db = scope.ServiceProvider.GetRequiredService<TContext>();
+                    var db = scope.ServiceProvider.GetRequiredService<TContext>();
+                    RunMigrations(db, _markers);
+                }
+                return Task.CompletedTask;
+            }
 
-                        try
-                        {
-                            // Make sure database exists first
-                            db.Database.EnsureCreated();
+            public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        }
 
-                            bool schemaExists = false;
-                            var provider = db.Database.ProviderName ?? string.Empty;
+        /* ---------- shared migration logic ---------- */
 
-                            if (_markers.Length > 0 && db.Database.CanConnect())
-                            {
-                                var markerList = string.Join(",", _markers.Select(t => "'" + t + "'"));
+        private static void RunMigrations<TContext>(TContext db, string[] markers) where TContext : DbContext
+        {
+            try
+            {
+                // Ensure database exists first
+                if (!db.Database.CanConnect())
+                {
+                    var creator = db.GetService<IRelationalDatabaseCreator>();
+                    creator.Create(); // creates database if missing
+                }
 
-                                string sql;
+                // Check if schema exists (optional, marker-based)
+                bool schemaExists = false;
+                var provider = db.Database.ProviderName ?? string.Empty;
 
-                                if (provider.Contains("Npgsql"))
-                                {
-                                    sql = "SELECT 1 FROM pg_tables WHERE tablename IN (" + markerList + ") LIMIT 1";
-                                }
-                                else if (provider.Contains("MySql") || provider.Contains("MariaDb"))
-                                {
-                                    sql = "SELECT 1 FROM information_schema.tables WHERE table_name IN (" + markerList + ") LIMIT 1";
-                                }
-                                else
-                                {
-                                    // Generic fallback
-                                    sql = "SELECT 1 FROM information_schema.tables WHERE table_name IN (" + markerList + ") LIMIT 1";
-                                }
+                if (markers.Length > 0 && db.Database.CanConnect())
+                {
+                    var markerList = string.Join(",", markers.Select(t => "'" + t + "'"));
+                    string sql;
 
-                                try
-                                {
-                                    schemaExists = db.Database.ExecuteSqlRaw(sql) > 0;
-                                }
-                                catch
-                                {
-                                    // ignore schema detection failure, just run migrations
-                                }
-                            }
+                    if (provider.Contains("Npgsql"))
+                        sql = $"SELECT 1 FROM pg_tables WHERE tablename IN ({markerList}) LIMIT 1";
+                    else if (provider.Contains("MySql") || provider.Contains("MariaDb"))
+                        sql = $"SELECT 1 FROM information_schema.tables WHERE table_name IN ({markerList}) LIMIT 1";
+                    else
+                        sql = $"SELECT 1 FROM information_schema.tables WHERE table_name IN ({markerList}) LIMIT 1";
 
-                            db.Database.Migrate();
-                        }
-                        catch
-                        {
-                            throw; // bubble up so host app can decide how to handle errors
-                        }
-                    }
+                    try { schemaExists = db.Database.ExecuteSqlRaw(sql) > 0; }
+                    catch { /* ignore schema detection errors */ }
+                }
 
-                    next(app);
-                };
+                // Run migrations
+                db.Database.Migrate();
+            }
+            catch
+            {
+                throw; // bubble up so host app can handle
             }
         }
     }
