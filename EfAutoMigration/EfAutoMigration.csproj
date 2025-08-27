@@ -2,15 +2,18 @@
 
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
-    <LangVersion>7.3</LangVersion>
+    <LangVersion>latest</LangVersion>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <Authors>Muhammad Guruh Ajinugroho</Authors>
     <Description>Automatic EF Core migrations on startup for ASP.NET Core and Generic Host apps.</Description>
     <PackageId>EfAutoMigration</PackageId>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <RepositoryUrl>https://github.com/MGAjinugrh/EfAutoMigration</RepositoryUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
 
   <ItemGroup>

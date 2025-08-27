@@ -11,7 +11,7 @@ The library targets **.NET Standard 2.0** (maximum compatibility), and can be co
 ## ✨ Features
 
 - Auto-applies pending EF Core migrations at startup.
-- Supports **PostgreSQL (Npgsql)** and **MySQL/MariaDB (Pomelo)**; more providers (e.g. SQL Server) can be added.
+- Supports **PostgreSQL (Npgsql), MySQL/MariaDB (Pomelo)** and **SQL Server (EFCore)**.
 - Works with any application using the **.NET Generic Host** model (ASP.NET Core, console apps, worker services, etc.).
 - Marker table support → detect if schema exists before applying migrations.
 - Removes boilerplate `Migrate()` code across multiple DbContexts.
@@ -60,6 +60,10 @@ Entity Framework Core provides two different ways to get your database schema in
 ### MySQL (Pomelo recommended)
 
 - `Pomelo.EntityFrameworkCore.MySql`
+
+### SQL Server
+
+- `Microsoft.EntityFrameworkCore.SqlServer`
 
 ### Optional (for hosting integration)
 
@@ -114,7 +118,7 @@ This works, but you must repeat it everywhere, and it doesn’t scale well acros
 
 ```csharp
 services.AddDbContext<MyDbContext>(options =>
-    options.UseNpgsql("Host=localhost;Database=testdb;Username=postgres;Password=yourpassword"));
+    options.UseNpgsql("Host=localhost;Database=testdb;Username=postgres;Password=yourpassword")); // depend on your db engine
 
 services.AddEfAutoMigration<MyDbContext>("user");
 ```
