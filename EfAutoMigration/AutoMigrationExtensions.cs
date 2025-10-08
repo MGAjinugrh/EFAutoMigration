@@ -76,8 +76,13 @@ public static class AutoMigrationExtensions
             // Ensure database exists first
             if (!db.Database.CanConnect())
             {
-                var creator = db.GetService<IRelationalDatabaseCreator>();
-                creator.Create(); // creates database if missing
+                var provider = db.Database.ProviderName ?? string.Empty;
+
+                if (!ContainsIgnoreCase(provider,"sqlite")) // skip unnecessary steps for sqlite
+                {
+                    var creator = db.GetService<IRelationalDatabaseCreator>();
+                    creator.Create(); // creates database if missing
+                }
             }
 
             if (markers.Length > 0 && db.Database.CanConnect())
@@ -95,6 +100,9 @@ public static class AutoMigrationExtensions
                     var p when p.Contains("SqlServer") =>
                         $"SELECT 1 FROM sys.tables WHERE name IN ({markerList})",
 
+                    var p when p.Contains("Sqlite") =>
+                        $"SELECT 1 FROM sqlite_master WHERE type='table' AND name IN ({markerList}) LIMIT 1",
+
                     _ =>
                         $"SELECT 1 FROM information_schema.tables WHERE table_name IN ({markerList}) LIMIT 1"
                 };
@@ -111,4 +119,13 @@ public static class AutoMigrationExtensions
             throw; // bubble up so host app can handle
         }
     }
+
+    /// <summary>
+    /// A remedy since .netstandard2.0 didn't support string.Contains(object, StringComparison.OrdinalIgnoreCase)
+    /// </summary>
+    /// <param name="source"></param>
+    /// <param name="value"></param>
+    /// <returns></returns>
+    private static bool ContainsIgnoreCase(string source, string value)
+    => source?.IndexOf(value, StringComparison.OrdinalIgnoreCase) >= 0;
 }
