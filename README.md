@@ -2,9 +2,9 @@
 
 `EFAutoMigration` is a lightweight .NET helper library that ensures
 **Entity Framework Core migrations are automatically applied at
-runtime**.\
+runtime** and now optionally **runs data seeders automatically** after migrations.\
 It removes the need to manually call `Database.Migrate()` in every
-project or run `dotnet ef database update` during deployment.\
+project or write boilerplate startup code for schema updates and initial seeding.\
 Instead, migrations are handled consistently when the application
 starts.
 
@@ -16,6 +16,7 @@ can be consumed seamlessly in modern frameworks such as **.NET 8.0**.
 ## ✨ Features
 
 -   Auto-applies pending EF Core migrations at startup.
+-   Optional data seeding via the new `AddSeeders()` extension.
 -   Supports **PostgreSQL (Npgsql), MySQL/MariaDB (Pomelo)**, **SQL
     Server (EFCore)**, and **SQLite**.
 -   Works with any application using the **.NET Generic Host** model
@@ -112,32 +113,21 @@ Or reference locally in your solution:
 
 ## 🛠 Usage
 
-### Conventional vs. EFAutoMigration
+### Conventional vs. EFAutoMigration
 
-  ----------------------------------------------------------------------------
-  Scenario        Conventional EF Core            With EFAutoMigration
-  --------------- ------------------------------- ----------------------------
-  Apply           `context.Database.Migrate();`   Auto-applied once at startup
-  migrations      everywhere manually             
+| Scenario | Conventional EF Core | With EFAutoMigration |
+|-----------|----------------------|-----------------------|
+| Apply migrations | `context.Database.Migrate();` everywhere manually | Auto-applied once at startup |
+| Multiple DbContexts | Must repeat `Migrate()` for each | Centralized handling for all DbContexts |
+| Boilerplate | Clutters `Program.cs` / `Startup.cs` | Clean DI registration only |
+| Schema detection | Must implement manually | Built-in marker table check |
+| Scaling to microservices | Error-prone, easy to forget | Consistent and automatic |
 
-  Multiple        Must repeat `Migrate()` for     Centralized handling for all
-  DbContexts      each                            DbContexts
-
-  Boilerplate     Clutters Program.cs /           Clean DI registration only
-                  Startup.cs                      
-
-  Schema          Must implement manually         Built-in marker table check
-  detection                                       
-
-  Scaling to      Error-prone, easy to forget     Consistent and automatic
-  microservices                                   
-  ----------------------------------------------------------------------------
-
-------------------------------------------------------------------------
+---
 
 ### Without EFAutoMigration (conventional)
 
-``` csharp
+```csharp
 using var context = new MyDbContext(...);
 context.Database.Migrate();
 ```
@@ -151,24 +141,29 @@ across multiple microservices or DbContexts.
 
 **Program.cs (ASP.NET Core / microservice style)**
 
-``` csharp
+```csharp
 services.AddDbContext<MyDbContext>(options =>
     options.UseNpgsql("Host=localhost;Database=testdb;Username=postgres;Password=yourpassword")); // depend on your db engine
 
-services.AddEfAutoMigration<MyDbContext>("user");
+// Enable automatic EF migrations & (optional) seeding
+services.AddEfAutoMigration<MyDbContext>("user")
+        .AddSeeders<MyDbContext>(
+            new UserSeeder() // optional: can be omitted if only migration is needed
+        );
 ```
 
 Now migrations are:
 
--   Automatically applied at startup.
--   Aware of whether schema already exists (via marker tables).
--   Centralized → no boilerplate across services.
+- Automatically applied at startup.
+- Optionally seed initial data after migration.
+- Aware of whether schema already exists (via marker tables).
+- Centralized → no boilerplate across services.
 
 ------------------------------------------------------------------------
 
 ### Example: Console App (.NET 8 + SQLite)
 
-``` csharp
+```csharp
 using Example.Sqlite.Data;
 using EfAutoMigration;
 using Microsoft.EntityFrameworkCore;
@@ -185,12 +180,15 @@ class Program
                 services.AddDbContext<MyDbContext>(options =>
                     options.UseSqlite("Data Source=./example_sqlite.db"));
 
-                services.AddEfAutoMigration<MyDbContext>("Users");
+                services.AddEfAutoMigration<MyDbContext>("Users")
+                        .AddSeeders<MyDbContext>(
+                            new ExampleSeeder() // optional
+                        );
             })
             .Build();
 
         await host.StartAsync();
-        Console.WriteLine("✅ Database migrated via EfAutoMigration");
+        Console.WriteLine("✅ Database migrated (and seeded) via EFAutoMigration");
 
         await host.StopAsync();
     }
