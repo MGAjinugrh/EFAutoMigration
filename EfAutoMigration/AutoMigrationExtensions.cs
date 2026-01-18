@@ -73,18 +73,34 @@ public static class AutoMigrationExtensions
     {
         try
         {
-            // Ensure database exists first
+            // 1. Ensure database exists
             if (!db.Database.CanConnect())
             {
                 var provider = db.Database.ProviderName ?? string.Empty;
 
-                if (!ContainsIgnoreCase(provider,"sqlite")) // skip unnecessary steps for sqlite
+                // SQLite creates the file automatically on open/migrate, so explicit Create() is often unnecessary or handled differently
+                if (!ContainsIgnoreCase(provider,"sqlite"))
                 {
                     var creator = db.GetService<IRelationalDatabaseCreator>();
-                    creator.Create(); // creates database if missing
+                    try
+                    {
+                        creator.Create();
+                    }
+                    catch
+                    {
+                        // 2. Race Condition Handler:
+                        // If Create() fails (e.g. "Database already exists"), check CanConnect() one more time.
+                        // If we can connect now, it means the DB was created successfully by another process/retry.
+                        if (!db.Database.CanConnect())
+                        {
+                            throw; // Real error (e.g. permission denied, wrong password), rethrow it.
+                        }
+                        // Otherwise, swallow the exception and proceed. The goal "DB exists" is met.
+                    }
                 }
             }
 
+            // 3. Marker Table Check (Schema Detection)
             if (markers.Length > 0 && db.Database.CanConnect())
             {
                 var markerList = string.Join(",", markers.Select(t => $"'{t}'"));
@@ -111,7 +127,7 @@ public static class AutoMigrationExtensions
                 catch { /* ignore schema detection errors */ }
             }
 
-            // Run migrations
+            // 4. Run migrations
             db.Database.Migrate();
         }
         catch

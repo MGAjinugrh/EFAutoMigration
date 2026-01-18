@@ -21,8 +21,7 @@ var host = Host.CreateDefaultBuilder(args)
 
         // Enable automatic EF migrations & seeder process (optional) with a marker table
         services.AddEfAutoMigration<MyDbContext>(TABLE_NAME)
-                .AddSeeders<MyDbContext>( //AddSeeder here is optional
-                new UserSeeder());
+                .AddSeeders<UserSeeder, MyDbContext>();
     })
     .Build();
 

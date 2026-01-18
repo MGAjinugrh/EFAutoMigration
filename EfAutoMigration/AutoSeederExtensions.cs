@@ -2,6 +2,8 @@
 using EfAutoMigration.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 
 namespace EfAutoMigration;
 
@@ -15,42 +17,20 @@ namespace EfAutoMigration;
 public static class AutoSeederExtensions
 {
     /// <summary>
-    /// Registers one or more <see cref="ISeeder{TContext}"/> implementations
-    /// to automatically run after migrations are applied.
-    /// 
-    /// <para>
-    /// Usage example:
-    /// <code>
-    /// services.AddEfAutoMigration&lt;MyDbContext&gt;("Users")
-    ///         .AddSeeders&lt;MyDbContext&gt;(
-    ///             new UserSeeder(),
-    ///             new RoleSeeder()
-    ///         );
-    /// </code>
-    /// </para>
-    /// 
-    /// <para>
-    /// This method is optional — you can safely omit it
-    /// if your app does not require initial data seeding.
-    /// </para>
+    /// Registers a seeder type to be resolved via Dependency Injection.
+    /// This allows the Seeder to inject services like ILogger, IConfiguration, etc.
     /// </summary>
-    /// <typeparam name="TContext">The EF Core DbContext type.</typeparam>
-    /// <param name="services">The dependency injection service container.</param>
-    /// <param name="seeders">One or more seeder instances implementing <see cref="ISeeder{TContext}"/>.</param>
-    /// <returns>The same <see cref="IServiceCollection"/> for fluent chaining.</returns>
-    public static IServiceCollection AddSeeders<TContext>(
-            this IServiceCollection services,
-            params ISeeder<TContext>[] seeders
-        ) where TContext : DbContext
+    /// <typeparam name="TSeeder">The class implementing ISeeder</typeparam>
+    /// <typeparam name="TContext">The DbContext</typeparam>
+    public static IServiceCollection AddSeeders<TSeeder, TContext>(this IServiceCollection services)
+            where TContext : DbContext
+            where TSeeder : class, ISeeder<TContext>
     {
-        // Register the seeders
-        foreach (var seeder in seeders)
-        {
-            services.AddSingleton<ISeeder<TContext>>(seeder);
-        }
+        // 1. Register the seeder itself
+        services.AddScoped<ISeeder<TContext>, TSeeder>();
 
-        // Register a hosted service that runs seeding logic after migration
-        services.AddHostedService<EfSeederHostedService<TContext>>();
+        // 2. Ensure the hosted service runner is registered (only once)
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, EfSeederHostedService<TContext>>());
 
         return services;
     }
